@@ -1,0 +1,45 @@
+# 加载包
+library(tidyverse)
+library(ggplot2)
+
+# 读取数据（假设保存为 growth.txt，制表符分隔）
+data <- read_tsv("growth.txt")
+
+# 转换为长数据格式
+data_long <- data %>%
+  pivot_longer(
+    cols = -Time,
+    names_to = "Replicate",
+    values_to = "OD600"
+  )
+
+# 计算均值和标准差
+summary_data <- data_long %>%
+  group_by(Time) %>%
+  summarise(
+    mean = mean(OD600, na.rm = TRUE),
+    sd = sd(OD600, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 作图：生长曲线 + 误差棒
+ggplot(summary_data, aes(x = Time, y = mean)) +
+  geom_line(color = "red", size = 1) +                 # 红色曲线
+  geom_point(color = "red", size = 2) +                # 数据点
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
+                width = 0.2, color = "black") +        # 黑色误差棒
+  labs(
+    title = "Growth Curve of M14-103",
+    x = "Time (h)",
+    y = "OD600"
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(family = "Times New Roman"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12, face = "bold"),   # 横纵坐标数值加粗
+    plot.title = element_text(hjust = 0.5, size = 16),
+    panel.grid = element_blank(),      
+    panel.border = element_blank(),
+    axis.line = element_line(color = "black", linewidth = 0.8)
+  )
