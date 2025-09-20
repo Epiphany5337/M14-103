@@ -1,0 +1,103 @@
+library(tidyverse)
+library(RColorBrewer)
+
+# 读取数据（请替换成你的路径）
+data <- read_tsv("你的文件路径.txt")
+
+# 数据整理成长格式
+data_long <- data %>%
+  pivot_longer(-Strain, names_to = "Group", values_to = "Value") %>%
+  separate(Group, into = c("Time", "Rep"), sep = "-") %>%
+  mutate(
+    Time = factor(Time, levels = c("3h", "6h", "24h")),
+    Value_pct = Value * 100
+  )
+
+# 提取 LGG 数据
+lgg_data <- data_long %>%
+  filter(Strain == "LGG")
+
+# 显著性分析（自动判断是否等方差）
+pval_data <- data_long %>%
+  filter(Strain != "LGG") %>%
+  group_by(Strain, Time) %>%
+  summarise(
+    result = list({
+      current_time <- unique(Time)
+      x <- Value_pct
+      y <- lgg_data %>% filter(Time == current_time) %>% pull(Value_pct)
+      
+      # 判断是否等方差
+      equal_var <- tryCatch(var.test(x, y)$p.value > 0.05, error = function(e) NA)
+      
+      # 选择适当 T 检验
+      t_result <- tryCatch(t.test(x, y, var.equal = equal_var), error = function(e) NA)
+      
+      list(
+        p = ifelse(is.list(t_result), t_result$p.value, NA),
+        equal_var = equal_var,
+        test_type = ifelse(isTRUE(equal_var), "Pooled", "Welch")
+      )
+    }),
+    .groups = "drop"
+  ) %>%
+  unnest_wider(result) %>%
+  mutate(
+    significance = case_when(
+      is.na(p) ~ "",
+      p < 0.001 ~ "***",
+      p < 0.01 ~ "**",
+      p < 0.05 ~ "*",
+      TRUE ~ ""
+    )
+  )
+
+# 输出检查
+print(pval_data)
+
+# 可视化用数据整合
+plot_data <- data_long %>%
+  group_by(Strain, Time) %>%
+  summarise(
+    Mean = mean(Value_pct, na.rm = TRUE),
+    SE = sd(Value_pct, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  left_join(pval_data, by = c("Strain", "Time")) %>%
+  mutate(label_y = Mean + SE + 3)
+
+# 设置颜色：LGG vs others
+set1_colors <- brewer.pal(n = 3, "Set1")
+plot_data$Color <- ifelse(plot_data$Strain == "LGG", set1_colors[1], set1_colors[2])
+
+# 动态 y 轴上限
+y_limit <- max(plot_data$label_y, na.rm = TRUE) + 5
+
+# 绘图
+ggplot(plot_data, aes(x = Strain, y = Mean, fill = Color)) +
+  geom_bar(stat = "identity", position = position_dodge(0.8), width = 0.7) +
+  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE),
+                position = position_dodge(0.8), width = 0.2) +
+  geom_text(aes(label = significance, y = label_y),
+            position = position_dodge(0.8), size = 5, family = "Times New Roman") +
+  scale_fill_identity() +
+  facet_wrap(~Time) +
+  scale_y_continuous(
+    name = "Auto-aggregation (%)",
+    breaks = seq(0, 100, 25),
+    limits = c(0, y_limit),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(x = "Strain") +
+  theme_bw() +
+  theme(
+    text = element_text(family = "Times New Roman"),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    strip.text = element_text(size = 14),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.line = element_line(),
+    legend.position = "none"
+  )
