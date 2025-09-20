@@ -1,0 +1,58 @@
+library(tidyverse)
+library(ggpubr)
+library(showtext)  # 用于支持Times New Roman字体
+
+# 1. 读取数据（请替换路径）
+data <- read.table("your path", header = TRUE, sep = "\t")
+
+# 2. 将数据从宽格式转换为长格式
+data_long <- data %>%
+  pivot_longer(cols = starts_with("TEST"), 
+               names_to = "Test", 
+               values_to = "Y")
+
+# 3. 设置组别顺序和颜色
+data_long$Group <- factor(data_long$Group, levels = c("CON", "LPS", "M14-103", "LPS+M14-103"))
+group_colors <- c("CON" = "blue", 
+                  "M14-103" = "darkblue", 
+                  "LPS" = "red", 
+                  "LPS+M14-103" = "lightblue")
+
+# 4. 多组比较，以LPS为对照
+comparisons <- list(c("LPS", "CON"), 
+                    c("LPS", "M14-103"), 
+                    c("LPS", "LPS+M14-103"))
+
+# 5. 计算y轴起点和显著性间距
+summary_data <- data_long %>%
+  group_by(Group) %>%
+  summarise(mean_val = mean(Y),
+            sd_val = sd(Y),
+            .groups = "drop")
+
+y_start <- max(summary_data$mean_val + summary_data$sd_val) * 1.05
+y_step <- max(summary_data$sd_val) * 1.2
+
+# 6. 绘图
+p <- ggplot(data_long, aes(x = Group, y = Y, fill = Group)) +
+  geom_bar(stat = "summary", fun = "mean", position = position_dodge(width = 0.8), width = 0.7) +
+  geom_errorbar(stat = "summary", fun.data = mean_se, width = 0.2, color = "black") +  # 默认粗细
+  scale_fill_manual(values = group_colors) +
+  geom_signif(comparisons = comparisons,
+              map_signif_level = TRUE,
+              test = "t.test",
+              y_position = y_start + y_step * seq_along(comparisons),
+              textsize = 5,
+              tip_length = 0.02) +
+  labs(x = "Group", y = "Y name") +
+  theme_classic(base_size = 14) +
+  theme(
+    legend.position = "none",
+    text = element_text(family = "Times"),  # Times New Roman字体
+    axis.text.x = element_text(angle = 45, hjust = 1), # 横坐标倾斜45度
+    axis.text.y = element_text(),
+    axis.title = element_text()
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2))) # Y轴从0开始，顶部留空
+
+print(p)
