@@ -1,0 +1,46 @@
+# 加载包
+library(tidyverse)
+library(ggplot2)
+
+# 读取数据
+data <- read_tsv("")
+
+# 转换为长数据格式
+data_long <- data %>%
+  pivot_longer(
+    cols = -Time,
+    names_to = "Replicate",
+    values_to = "OD600"
+  )
+
+# 计算均值和标准差
+summary_data <- data_long %>%
+  group_by(Time) %>%
+  summarise(
+    mean = mean(OD600, na.rm = TRUE),
+    sd = sd(OD600, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 作图
+ggplot(summary_data, aes(x = Time, y = mean)) +
+  geom_line(color = "red", size = 1) +                 # 红色曲线
+  geom_point(color = "red", size = 3) +                # 数据点
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
+                width = 0.4, color = "black", size = 0.8) +        # 黑色误差棒
+  labs(
+    title = "",
+    x = "Time (h)",
+    y = "OD600"
+  ) +
+  theme_bw(base_size = 14, base_family = "Times New Roman") +
+  theme(
+    axis.text.x = element_text(hjust = 1, size = 14, face = "bold"),
+    axis.text.y = element_text(size = 14, face = "bold"),
+    axis.title.x = element_text(size = 16, face = "bold", margin = margin(t = 8)),
+    axis.title.y = element_text(size = 16, face = "bold", margin = margin(r = 8)),
+    axis.line = element_line(size = 1.2),
+    axis.ticks = element_line(size = 1.1),
+    panel.border = element_blank(),
+    panel.grid = element_blank(),
+  )
