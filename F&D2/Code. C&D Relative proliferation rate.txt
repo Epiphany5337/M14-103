@@ -1,0 +1,82 @@
+# 加载必要包
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(RColorBrewer)
+
+# 读取 TXT 文件
+data <- read_tsv(" ")  
+
+# 转换为长数据格式
+data_long <- data %>%
+  pivot_longer(cols = -Strain, names_to = "Replicate", values_to = "Value")
+
+# 提取 LGG 数据
+LGG_data <- data_long %>% filter(Strain == "LGG")
+
+# T 检验
+p_data <- data_long %>%
+  filter(Strain != "LGG") %>%
+  group_by(Strain) %>%
+  summarise(
+    p_value = tryCatch({
+      ftest <- var.test(Value, LGG_data$Value)
+      equal_var <- ftest$p.value > 0.05
+      t.test(Value, LGG_data$Value, var.equal = equal_var)$p.value
+    }, error = function(e) NA),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    signif_label = case_when(
+      is.na(p_value) ~ "",
+      p_value < 0.001 ~ "***",
+      p_value < 0.01 ~ "**",
+      p_value < 0.05 ~ "*",
+      TRUE ~ ""
+    )
+  )
+
+# 计算统计量
+summary_data <- data_long %>%
+  group_by(Strain) %>%
+  summarise(
+    mean = mean(Value, na.rm = TRUE) * 100,
+    sd = sd(Value, na.rm = TRUE) * 100,
+    se = (sd(Value, na.rm = TRUE) / sqrt(n())) * 100,
+    .groups = "drop"
+  )
+
+# 合并显著性标记
+plot_data <- summary_data %>%
+  left_join(p_data, by = "Strain") %>%
+  mutate(
+    label_y = mean + se + 5,
+    Color = ifelse(Strain == "LGG", brewer.pal(3, "Set1")[1], brewer.pal(3, "Set1")[2])
+  )
+
+# 绘图
+ggplot(plot_data, aes(x = Strain, y = mean, fill = Color)) +
+  geom_bar(stat = "identity", width = 0.6, color = "black") +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.4, color = "black", size = 0.8) +
+  geom_text(aes(label = signif_label, y = label_y), vjust = 0, size = 5, fontface = "bold", family = "Times New Roman") +
+  scale_y_continuous(
+    name = "Relative Proliferation Rate (%)",
+    breaks = seq(0, 200, 40),
+    limits = c(0, 200),
+    expand = c(0, 0)
+    
+  ) +
+  scale_fill_identity() +
+  theme_bw(base_size = 14, base_family = "Times New Roman") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14, face = "bold"),
+    axis.text.y = element_text(size = 14, face = "bold"),
+    axis.title.x = element_text(size = 16, face = "bold", margin = margin(t = 8)),
+    axis.title.y = element_text(size = 16, face = "bold", margin = margin(r = 8)),
+    axis.line = element_line(size = 1.2),
+    axis.ticks = element_line(size = 1.1),
+    panel.border = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none"
+  ) +
+  labs(x = "Strain")
